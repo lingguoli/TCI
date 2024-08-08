@@ -1,0 +1,165 @@
+#!/bin/bash
+
+##
+## Author: Lingguo Li
+##
+
+##
+## This program is designed to analyze the tissue contribution index (TCI) in plasma cfDNA
+##
+## Please cite the following paper if you use this program in your work:
+## Li et al., Plasma cell-free DNA fragmentation profiles in promoter regions unveil tissue of origin.
+##
+
+## usage
+usage() {
+  echo "Version:   v1.0.0"
+  echo "Usage:     $0 -i <BED file>  [options]"
+  echo '
+    -i     Input your BED file
+
+    -p     The ID of the sample and the prefix of the generated file
+           -Default: The field before the first point
+
+    -o     Output dir.
+           -Default: pwd
+
+    -min   Minimum of DNA fragment lenth.
+           -Default: 150.
+
+    -max   Maximum of DNA fragment lenth.
+           -Default: 210.
+
+    -T     Specify your own TSS bed file.
+           This file contains at least four columns,
+           eg. "chr1  100000  102000  TSS_ID_00001".
+           -Default: "./supplemental/hg38.tss.rename.UD1000.bed"
+
+    -R     Specify your own tissue specific highly expressed gene table.
+           This file contains at least two columns named
+           "Specific high expression tissue" and "TSS ID".
+           -Default: "./supplemental/TPM_atlas.csv"
+
+    -S     If using single-end sequencing BED, please enable this option.
+'
+}
+
+## get options
+while getopts ":i:p:o:min:max:T:R:S" opt; do
+  case $opt in
+    i)
+      in_bed=$OPTARG
+      ;;
+    p)
+      sample=$OPTARG
+      ;;
+    o)
+      out_dir=$OPTARG
+      ;;
+    min)
+      low=$OPTARG
+      ;;
+    max)
+      high=$OPTARG
+      ;;
+    T)
+      TSS=$OPTARG
+      ;;
+    R)
+      TPM=$OPTARG
+      ;;
+    S)
+      SE=true
+      ;;
+    \?)
+      echo "Invalid option: -$OPTARG"
+      usage
+      exit 1
+      ;;
+    :)
+      echo "Option -$OPTARG requires an argument."
+      usage
+      exit 1
+      ;;
+  esac
+done
+
+if [ ! -n "$in_bed" ]; then
+    usage
+    exit 1
+fi
+
+if [ ! -n "$out_dir" ]; then
+   out_dir=$(pwd)
+fi
+
+if [ ! -n "$low" ]; then
+    low=150
+fi
+
+if [ ! -n "$high" ]; then
+    high=210
+fi
+
+if [ ! -n "$SE" ]; then
+    SE=false
+fi
+
+if [ ! -n "$TSS" ]; then
+    TSS=$(dirname ${0})/supplemental/hg38.tss.rename.UD1000.bed
+fi
+
+if [ ! -n "$TPM" ]; then
+    TPM=$(dirname ${0})/supplemental/TPM_atlas.csv
+fi
+
+if [ ! -n "$sample" ]; then
+    sample=$(basename ${in_bed}|awk -v FS='.' '{print $1}')
+fi
+
+
+bedtools=$(dirname ${0})/bedtools
+python3=$(which python3)
+PE_tci=$(dirname ${0})/src/PE_TSS_bed_to_TCI.py
+SE_tci=$(dirname ${0})/src/SE_cnt_to_TCI.py
+
+
+############ main #############
+mkdir -p ${out_dir}/${sample}
+
+if [ "$TSS" == "$(dirname ${0})/supplemental/hg38.tss.rename.UD1000.bed" ]; then
+    TSS_region=$(dirname ${0})/supplemental/hg38.tss.rename.UD1000.merge_d_600.bed
+else
+    ${bedtools} merge -d 600 -i $TSS > ${out_dir}/tss.UD1000.merge_d_600.bed
+    TSS_region=${out_dir}/tss.UD1000.merge_d_600.bed
+fi
+
+echo "_________________Start $(date)_________________"
+if [ "$SE" != true ]; then
+
+    # STEP1
+      if [ "${in_bed##*.}" = "gz" ] || [ "${in_bed##*.}" = "bgz" ]; then ## gzip file
+        zcat ${in_bed}|awk -v OFS='\t' '{print $1,$2,$3}' -| ${bedtools} intersect -a - -b ${TSS_region} -wa|${bedtools} intersect -b - -a ${TSS} -wao |awk -v min=${low} -v max=${high} '($7-$6)>=min && ($7-$6)<max && $8 >= 30'  - > ${out_dir}/${sample}/${sample}.bp_${low}_${high}.depth.bed
+      else  ## ungzip file
+        awk -v OFS='\t' '{print $1,$2,$3}' ${in_bed} |${bedtools} intersect -a - -b ${TSS_region} -wa|${bedtools} intersect -b - -a ${TSS} -wao |awk -v min=${low} -v max=${high} '($7-$6)>=min && ($7-$6)<max && $8 >= 30'  - > ${out_dir}/${sample}/${sample}.bp_${low}_${high}.depth.bed
+      fi
+    # STEP2
+        ${python3} ${PE_tci} ${TPM} ${out_dir}/${sample}/${sample}.bp_${low}_${high}.depth.bed ${out_dir}/${sample}/${sample}.bp_${low}_${high}.depth ${out_dir}/${sample}/${sample}.bp_${low}_${high}.TCI
+rm ${out_dir}/${sample}/${sample}.bp_${low}_${high}.depth.bed
+fi
+
+if [ "$SE" == true ]; then
+  # STEP1
+    if [ "${in_bed##*.}" = "gz" ] || [ "${in_bed##*.}" = "bgz" ]; then ## gzip file
+      zcat ${in_bed}| ${bedtools} intersect -a - -b ${TSS_region} -wa|${bedtools} intersect -b -  -a ${TSS} -wa|uniq > ${out_dir}/${sample}/${sample}.SE.cnt
+    else ## ungzip file
+      ${bedtools} intersect -a ${in_bed} -b ${TSS_region} -wa|${bedtools} intersect -b -  -a ${TSS} -wa > ${out_dir}/${sample}/${sample}.SE.cnt
+    fi
+  # STEP2
+    ${python3} ${SE_tci} ${TPM} ${out_dir}/${sample}/${sample}.SE.cnt ${out_dir}/${sample}/${sample}.SE.depth ${out_dir}/${sample}/${sample}.SE.TCI
+rm ${out_dir}/${sample}/${sample}.SE.cnt
+fi
+
+
+echo "_________________End   $(date)_________________"
+
