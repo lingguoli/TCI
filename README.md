@@ -20,10 +20,10 @@ Usage:     TCI -i <BED file>  [options]
     -o     Output dir.
            -Default: pwd
 
-    -min   Minimum of DNA fragment lenth.
+    -l     Minimum of DNA fragment lenth.
            -Default: 150.
 
-    -max   Maximum of DNA fragment lenth.
+    -h     Maximum of DNA fragment lenth.
            -Default: 210.
 
     -T     Specify your own TSS bed file.
