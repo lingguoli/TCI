@@ -24,10 +24,10 @@ usage() {
     -o     Output dir.
            -Default: pwd
 
-    -min   Minimum of DNA fragment lenth.
+    -l     Minimum of DNA fragment lenth.
            -Default: 150.
 
-    -max   Maximum of DNA fragment lenth.
+    -h     Maximum of DNA fragment lenth.
            -Default: 210.
 
     -T     Specify your own TSS bed file.
@@ -45,7 +45,7 @@ usage() {
 }
 
 ## get options
-while getopts ":i:p:o:min:max:T:R:S" opt; do
+while getopts ":i:p:o:l:h:T:R:S" opt; do
   case $opt in
     i)
       in_bed=$OPTARG
@@ -56,10 +56,10 @@ while getopts ":i:p:o:min:max:T:R:S" opt; do
     o)
       out_dir=$OPTARG
       ;;
-    min)
+    l)
       low=$OPTARG
       ;;
-    max)
+    h)
       high=$OPTARG
       ;;
     T)
