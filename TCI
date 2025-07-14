@@ -1,0 +1,361 @@
+#!/bin/bash
+
+VERSION="1.0.1"
+
+# show help info
+show_help() {
+    cat << EOF
+TCI (Tissue Contribution Index) version 1.0.1
+Usage: TCI <command> [options]
+
+Available commands:
+  fq2tci           Convert   FASTQ  file to TCI.csv
+  bam2tci          Convert    BAM   file to TCI.csv
+  bed2tci          Convert    BED   file to TCI.csv
+  finaleDB2tci     Convert FinaleDB file to TCI.csv
+
+Use 'TCI <command> --help' for command-specific help.
+EOF
+}
+
+
+fq2tci_command() {
+    local input_file1=""
+    local input_file2=""
+	local adapter=""
+    local out_dir="$(pwd)"
+    local reference="$(dirname $0)/Ref/hg38.fa"
+    local SE=false
+
+    # get options
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            -i|--input1)
+                input_file1="$2"
+                shift 2
+                ;;
+            -I|--input2)
+                input_file2="$2"
+                shift 2
+                ;;
+            -a|--adapter_sequence)
+                adapter="$2"
+                shift 2
+                ;;
+            -o|--output_directory)
+                out_dir="$2"
+                shift 2
+                ;;
+            -r|--reference)
+                reference="$2"
+                shift 2
+                ;;
+            -s|--single_end)
+                SE=true
+                shift
+                ;;
+            -h|--help)
+                cat << EOF
+fq2tci - Convert FASTQ files to TCI.csv
+
+Options:
+  -i, --input_file1        <file>      Input FASTQ1 file (required)
+  -I, --input_file2        <file>      Input FASTQ2 file (required unless -s is true)
+  -a, --adapter_sequence               adapter for read1 (required if -s is true) 
+  -o, --output_directory               Output directory  (default: current directory)
+  -r, --reference          <file>      Reference genome  (default: \$(dirname \$0)/Ref/hg38.fa)
+  -s, --single_end                     Single end input  (default: false)
+  -h, --help                           Show this help message
+EOF
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ -z "$input_file1" ]]; then
+        echo "Error: Input FASTQ1 (-i) is required"
+        exit 1
+    fi
+
+    if [[ "$SE" == false && -z "$input_file2" ]]; then
+        echo "Error: Input FASTQ2 (-I) is required for paired-end mode"
+        exit 1
+    fi
+
+    if [[ "$SE" == true && -z "$adapter" ]]; then
+        echo "Error: Adapter sequence (-a) is required for single-end mode"
+        exit 1
+    fi
+
+    # show options
+    echo "Running fq2tci with:"
+    echo "  Input FASTQ1: $input_file1"
+    [[ -n "$input_file2" ]] && echo "  Input FASTQ2: $input_file2" || echo "  Input file2: None (single-end mode)"
+    [[ -n "$adapter" ]] && echo "  Adapter sequence: $adapter" || echo "  Adapter sequence: None"
+    echo "  Output directory: $out_dir"
+    echo "  Reference genome: $reference"
+    echo "  Single end mode: $SE"
+
+    
+    # cmd
+    if [ "$SE" == false ]; then
+        sh $(dirname $0)/shells/PE_fq_to_tci.sh ${input_file1} ${input_file2} ${out_dir} ${reference}
+    fi
+
+    if [ "$SE" == true ]; then
+        sh $(dirname $0)/shells/SE_fq_to_tci.sh ${input_file1} ${adapter} ${out_dir} ${reference}
+    fi
+}
+
+
+bam2tci_command() {
+    local bam_file=""
+    local out_dir="$(pwd)"
+    local reference="$(dirname $0)/Ref/hg38.fa"
+    local SE=false
+
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            -i|--bam)
+                bam_file="$2"
+                shift 2
+                ;;
+            -o|--output_directory)
+                out_dir="$2"
+                shift 2
+                ;;
+            -r|--reference)
+                reference="$2"
+                shift 2
+                ;;
+            -s|--single_end)
+                SE=true
+                shift
+                ;;
+            -h|--help)
+                cat << EOF
+bam2tci - Convert BAM files to TCI.csv
+
+Options:
+  -i, --bam                <file>      Input BAM file    (required, both .bam and .bam.bai must exist)
+  -o, --output_directory               Output directory  (default: current directory)
+  -r, --reference          <file>      Reference genome  (default: $(dirname $0)/Ref/hg38.fa)
+  -s, --single_end                     Single end input  (default: false)
+  -h, --help                           Show this help message
+
+Notes:
+1. The BAM index file (.bam.bai) must exist in the same directory as the BAM file
+EOF
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+
+    if [[ -z "$bam_file" ]]; then
+        echo "Error: BAM file (-b/--bam) is required"
+        exit 1
+    fi
+
+    if [[ ! -f "$bam_file" ]]; then
+        echo "Error: BAM file not found: $bam_file"
+        exit 1
+    fi
+
+    if [[ ! -f "${bam_file}.bai" ]]; then
+        echo "Error: BAM index file not found: ${bam_file}.bai"
+        exit 1
+    fi
+
+    if [[ ! -f "$reference" ]]; then
+        echo "Error: Reference genome file not found: $reference"
+        exit 1
+    fi
+
+    mkdir -p "$out_dir"
+
+    # show options
+    echo "Running bam2tci with:"
+    echo "  BAM file: $bam_file"
+    echo "  BAM index: ${bam_file}.bai"
+    echo "  Output directory: $out_dir"
+    echo "  Reference genome: $reference"
+    echo "  Single end mode: $SE"
+    
+    # cmd
+    if [ "$SE" == false ]; then
+        sh $(dirname $0)/shells/PE_bam_to_tci.sh ${bam_file} ${out_dir} ${reference}
+    fi
+
+    if [ "$SE" == true ]; then
+        sh $(dirname $0)/shells/SE_bam_to_tci.sh ${bam_file} ${out_dir} ${reference}
+    fi
+}
+
+bed2tci_command() {
+    local bed_file=""
+    local out_dir="$(pwd)"
+    local reference="$(dirname $0)/Ref/hg38.fa"
+    local SE=false
+
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            -i|--bed)
+                bed_file="$2"
+                shift 2
+                ;;
+            -o|--output_directory)
+                out_dir="$2"
+                shift 2
+                ;;
+            -r|--reference)
+                reference="$2"
+                shift 2
+                ;;
+            -s|--single_end)
+                SE=true
+                shift
+                ;;
+            -h|--help)
+                cat << EOF
+bed2tci - Convert BED files to TCI.csv
+
+Options:
+  -i, --bed                <file>      Input BED file    (required)
+  -o, --output_directory               Output directory  (default: current directory)
+  -r, --reference          <file>      Reference genome  (default: $(dirname $0)/Ref/hg38.fa)
+  -s, --single_end                     Single end input  (default: false)
+  -h, --help                           Show this help message
+EOF
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ -z "$bed_file" ]]; then
+        echo "Error: BED file (-i/--input) is required"
+        echo "Use -h or --help for usage information"
+        exit 1
+    fi
+
+    if [[ ! -f "$bed_file" ]]; then
+        echo "Error: BED file not found: $bed_file"
+        exit 1
+    fi
+
+
+    mkdir -p "$out_dir"
+
+    # show options
+    echo "Running bed2tci with the following parameters:"
+    echo "  Input BED file: $bed_file"
+    echo "  Output directory: $out_dir"
+    echo "  Reference genome: $reference"
+    echo "  Processing mode: $([[ "$SE" == true ]] && echo "Single-end" || echo "Paired-end")"
+    
+    
+    # cmd
+    if [ "$SE" == false ]; then
+        sh $(dirname $0)/shells/PE_bed_to_tci.sh ${bed_file} ${out_dir} ${reference}
+    fi
+
+    if [ "$SE" == true ]; then
+        sh $(dirname $0)/shells/SE_bed_to_tci.sh ${bed_file} ${out_dir} ${reference}
+    fi
+}
+
+finaleDB2tci_command() {
+    local db_file=""
+    local out_dir="$(pwd)"
+
+
+    while [[ "$#" -gt 0 ]]; do
+        case $1 in
+            -i|--input)
+                db_file="$2"
+                shift 2
+                ;;
+            -o|--output_directory)
+                out_dir="$2"
+                shift 2
+                ;;
+            -h|--help)
+                cat << EOF
+finaleDB2tci - Convert FinaleDB files to TCI.csv
+
+Options:
+  -i, --input               <file>   Input FinaleDB .tsv.bgz (required)
+  -o, --output_directory             Output directory        (default: current directory)
+  -h, --help                         Show this help message
+EOF
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ -z "$db_file" ]]; then
+        echo "Error: Database file (-d/--database) is required"
+        echo "Use -h or --help for usage information"
+        exit 1
+    fi
+
+    if [[ ! -f "$db_file" ]]; then
+        echo "Error: Database file not found: $db_file"
+        exit 1
+    fi
+
+    mkdir -p "$out_dir"
+    
+    # cmd 
+    sh $(dirname $0)/shells/GC_bias.finaleDB.sh ${db_file} ${out_dir}
+}
+
+### main ###
+if [[ $# -lt 1 ]]; then
+    show_help
+    exit 1
+fi
+
+# cmds
+case $1 in
+    fq2tci)
+        shift
+        fq2tci_command "$@"
+        ;;
+    bam2tci)
+        shift
+        bam2tci_command "$@"
+        ;;
+    bed2tci)
+        shift
+        bed2tci_command "$@"
+        ;;
+    finaleDB2tci)
+        shift
+        finaleDB2tci_command "$@"
+        ;;
+    -h|--help|help)
+        show_help
+        ;;
+    *)
+        echo "Unknown command: $1"
+        show_help
+        exit 1
+        ;;
+esac
