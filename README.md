@@ -51,7 +51,10 @@ Option	Description
 Example:
 
 ```bash
-./TCI fq2tci -i ${sample}_R1.fq -I ${sample}_R2.fq -o ${out_dir}
+# paired end
+./TCI fq2tci -i ./demo/test_1.fq.gz -I ./demo/test_2.fq.gz -o ./demo/fq2tci_PE
+# single end
+./TCI fq2tci -i ./demo/test_1.fq.gz -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA -o ./demo/fq2tci_SE -s
 ```
 
 ### bam2tci
